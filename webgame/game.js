@@ -1,0 +1,476 @@
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const goalWidth = 160, goalDepth = 14, poolPadding = 30;
+let running = false, last = performance.now(), timeLeft = 3 * 60;
+let score = { blue: 0, red: 0 };
+let tacklePressed = false;
+const keys = new Set();
+const mouse = { x: W/2, y: H/2, down: false, power: 0 };
+let currentControlledIndex = 0;
+let lastHolder = null;
+
+class Entity {
+  constructor(x,y,r,color,team){
+    this.x=x; this.y=y; this.vx=0; this.vy=0;
+    this.r=r; this.color=color; this.team=team;
+    this.maxSpeed=5; this.accel=0.28; this.friction=0.90;
+    this.isKeeper=false; this.ai = true; this.cooldown=0;
+    this.tackleTimer = 0;
+  }
+  step(){
+    this.vx *= this.friction; this.vy *= this.friction;
+    this.x += this.vx; this.y += this.vy;
+    const left = poolPadding+goalDepth, right = W-(poolPadding+goalDepth), top = poolPadding, bottom = H-poolPadding;
+    if(this.x - this.r < left){ this.x = left + this.r; this.vx=0; }
+    if(this.x + this.r > right){ this.x = right - this.r; this.vx=0; }
+    if(this.y - this.r < top){ this.y = top + this.r; this.vy=0; }
+    if(this.y + this.r > bottom){ this.y = bottom - this.r; this.vy=0; }
+    if(this.cooldown>0) this.cooldown-=1;
+  }
+  applyInput(ax, ay){
+    this.vx += ax * this.accel; this.vy += ay * this.accel;
+    const s = Math.hypot(this.vx,this.vy);
+    let mult = 1;
+    if (ball.holder === this) mult *= 1.00;     // tweak 1.05–1.15 if you want carrier faster
+    if (this.isKeeper) mult *= 1.0;
+    const m = this.maxSpeed * mult;
+    if(s>m){ this.vx = this.vx/s * m; this.vy = this.vy/s * m; }
+  }
+  draw(){
+    // Outer ring (team colour)
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = this.team === 'blue' ? '#bfe7ff' : '#ffd1d1';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Player body
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(this.x + this.r * 0.35, this.y - this.r * 0.35, this.r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight if this is the controlled blue player
+    const you = getControlledBlue();
+    if (this === you) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'gold';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+  }
+}
+
+class Ball {
+  constructor(){ this.x=W/2; this.y=H/2; this.vx=0; this.vy=0; this.r=7; this.drag=0.985; this.holder=null; }
+  step(){
+    if(this.holder){ this.x = this.holder.x + (this.holder.team==='blue'? 10:-10); this.y = this.holder.y; this.vx=0; this.vy=0; return; }
+    this.vx *= this.drag; this.vy *= this.drag; this.x+=this.vx; this.y+=this.vy;
+    const left = poolPadding+goalDepth, right = W-(poolPadding+goalDepth), top=poolPadding, bottom=H-poolPadding;
+    if(this.y - this.r < top){ this.y = top + this.r; this.vy*=-0.7; }
+    if(this.y + this.r > bottom){ this.y = bottom - this.r; this.vy*=-0.7; }
+    const inGoalY = this.y > (H/2 - goalWidth/2) && this.y < (H/2 + goalWidth/2);
+    if(!inGoalY){
+      if(this.x - this.r < left){ this.x = left + this.r; this.vx*=-0.7; }
+      if(this.x + this.r > right){ this.x = right - this.r; this.vx*=-0.7; }
+    }
+  }
+  draw(){
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2);
+    ctx.fillStyle='#ffef6e'; ctx.fill();
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2);
+    ctx.strokeStyle='#c2a800'; ctx.stroke();
+  }
+}
+
+const players = [], blueFieldPlayers = [], redFieldPlayers = [];
+const ball = new Ball();
+
+// Helper to get currently controlled blue player or goalie
+function getControlledBlue(){
+    if (currentControlledIndex === -1) {
+        return players.find(p => p.isKeeper && p.team === 'blue');
+    }
+    return blueFieldPlayers[currentControlledIndex];
+}
+
+function spawnTeams(){
+  players.length=0; blueFieldPlayers.length=0; redFieldPlayers.length=0;
+  // Blue field players
+  for(let i=0;i<6;i++){
+    const b = new Entity(W*0.25, H*(0.2+0.12*i), 15, '#0ab0ff','blue');
+    if(i===0) b.ai=false;
+    players.push(b); blueFieldPlayers.push(b);
+  }
+  const gkB = new Entity(poolPadding+goalDepth+24, H*0.5, 18, '#088fcc','blue');
+  gkB.isKeeper=true; players.push(gkB);
+
+  // Red field players
+  for(let i=0;i<6;i++){
+    const r = new Entity(W*0.75, H*(0.2+0.12*i), 15, '#ff5b5b','red');
+    players.push(r); redFieldPlayers.push(r);
+  }
+  const gkR = new Entity(W-(poolPadding+goalDepth+24), H*0.5, 18, '#e14949','red');
+  gkR.isKeeper=true; players.push(gkR);
+
+  ball.x=W/2; ball.y=H/2; ball.vx=0; ball.vy=0; ball.holder=null;
+  currentControlledIndex=0;
+  syncControlToHolder();
+}
+
+function formDShape(team){
+  const goalX = team==="blue"? W-poolPadding-goalDepth-60 : poolPadding+goalDepth+60;
+  const centerY = H/2;
+  const radius = 120;
+  const angles = [-60,-36,-12,12,36,60].map(a=>a*Math.PI/180);
+  return angles.map(a=>({
+    x: goalX - Math.cos(a)*radius*(team==="blue"?1:-1),
+    y: centerY + Math.sin(a)*radius
+  }));
+}
+
+function handleInput(){
+  const player = getControlledBlue();
+  let ax=0, ay=0;
+  if(keys.has('ArrowUp')||keys.has('w')) ay -= 1;
+  if(keys.has('ArrowDown')||keys.has('s')) ay += 1;
+  if(keys.has('ArrowLeft')||keys.has('a')) ax -= 1;
+  if(keys.has('ArrowRight')||keys.has('d')) ax += 1;
+  if(ax||ay){ const len=Math.hypot(ax,ay)||1; player.applyInput(ax/len, ay/len); }
+  if(mouse.down && ball.holder===player){ mouse.power = Math.min(1, mouse.power + 0.015); }
+  else { mouse.power = Math.max(0, mouse.power - 0.02); }
+}
+
+function nearestTeammate(from){
+  let best=null, bd=1e9;
+  for(const pl of players){ if(pl===from) continue; if(pl.team!==from.team) continue;
+    const d=(pl.x-from.x)**2+(pl.y-from.y)**2; if(d<bd){ bd=d; best=pl; } }
+  return best;
+}
+
+function tryShoot(holder, targetX, targetY, power=0.7){
+  if(holder.cooldown>0) return;
+  holder.cooldown=20; ball.holder=null;
+  const ang=Math.atan2(targetY-holder.y, targetX-holder.x);
+  const speed=10 + 6*power;
+  ball.x=holder.x + Math.cos(ang)*(holder.r+ball.r+2);
+  ball.y=holder.y + Math.sin(ang)*(holder.r+ball.r+2);
+  ball.vx=Math.cos(ang)*speed; ball.vy=Math.sin(ang)*speed;
+}
+
+function tryPass(holder){
+  const mate = nearestTeammate(holder);
+  if(!mate) return;
+  const dx = mate.x - holder.x, dy = mate.y - holder.y;
+  const dist=Math.hypot(dx,dy);
+  tryShoot(holder, holder.x + dx, holder.y + dy, 0.55 + Math.min(0.45, dist/600));
+}
+
+function syncControlToHolder(){
+  if (ball.holder && ball.holder.team === 'blue') {
+    const idx = blueFieldPlayers.indexOf(ball.holder);
+    if (idx !== -1) {
+        currentControlledIndex = idx;
+        blueFieldPlayers.forEach(p => p.ai = true);
+        blueFieldPlayers[idx].ai = false;
+    } else {
+        const blueGoalie = players.find(p => p.isKeeper && p.team === 'blue');
+        if (ball.holder === blueGoalie) {
+            currentControlledIndex = -1;
+            blueFieldPlayers.forEach(p => p.ai = true);
+            blueGoalie.ai = false;
+        }
+    }
+  }
+}
+
+function aiThink(){
+    const blueD = formDShape("blue"), redD = formDShape("red");
+
+    // --- RED TEAM ATTACK BRAIN (one-time per frame) ---
+    if (ball.holder && ball.holder.team === 'red' && ball.holder.ai) {
+        const holder = ball.holder;
+
+        // If close to BLUE goal, take a shot
+        if (holder.x < poolPadding + 200 && Math.abs(holder.y - H/2) < goalWidth/2) {
+            tryShoot(holder, poolPadding, H/2, 0.8);
+        } else {
+            // Occasionally pass to mix up play
+            if (holder.cooldown === 0 && Math.random() < 0.005) {
+                tryPass(holder);
+            }
+        }
+    }
+
+    // --- PER-PLAYER MOVEMENT/DEFENCE ---
+    for (const pl of players) {
+        if (!pl.ai) continue;
+
+        if (pl.isKeeper) {
+            const homeX = (pl.team==='blue') ? poolPadding+goalDepth+24 : W-(poolPadding+goalDepth+24);
+            const ty = Math.max(H/2 - goalWidth/2 + 30, Math.min(ball.y, H/2 + goalWidth/2 - 30));
+            const ax = (homeX - pl.x) * 0.003, ay = (ty - pl.y) * 0.01;
+            pl.applyInput(ax, ay);
+            continue;
+        }
+
+        const teamArray = pl.team==='blue' ? blueFieldPlayers : redFieldPlayers;
+        const shape = pl.team==='blue' ? blueD : redD;
+        const idx = teamArray.indexOf(pl);
+
+        if (ball.holder && ball.holder.team === pl.team) {
+        // Attacking: move to D-shape anchor
+            pl.applyInput((shape[idx].x - pl.x)*0.01, (shape[idx].y - pl.y)*0.01);
+        } else {
+        // Defending: mark nearest opponent
+            const opps = pl.team==='blue' ? redFieldPlayers : blueFieldPlayers;
+            let nearest = opps[0], dmin = 1e9;
+            for (const o of opps) { const d=(o.x-pl.x)**2 + (o.y-pl.y)**2; if (d<dmin){ dmin=d; nearest=o; } }
+            pl.applyInput((nearest.x - pl.x)*0.01, (nearest.y - pl.y)*0.01);
+        }
+    }
+}
+
+function tackleCheck(dt) {
+    if (!ball.holder) return;
+
+    for (const p of players) {
+        if (p === ball.holder) continue; 
+        if (p.team !== ball.holder.team) {
+            const dx = ball.holder.x - p.x;
+            const dy = ball.holder.y - p.y;
+            const dist = Math.hypot(dx, dy);
+
+            // Check if in front of holder (within 45° cone)
+            const facingAngle = Math.atan2(p.vy, p.vx);
+            const toHolderAngle = Math.atan2(dy, dx);
+            let angleDiff = Math.abs(facingAngle - toHolderAngle);
+            if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+            const inFront = angleDiff < Math.PI / 4;
+
+            // Within tackle range and in front
+            if (dist < p.r + ball.holder.r + 4 && inFront) {
+                if (p === getControlledBlue()) {
+                // Human player must press T
+                if (tacklePressed) {
+                    p.tackleTimer += dt / 1000;
+                    if (p.tackleTimer >= 2) {
+                    ball.holder = p;
+                    p.tackleTimer = 0;
+                    }
+                } else {
+                    p.tackleTimer = 0;
+                }
+                } else {
+                // CPU auto tackle after 2 sec contact
+                p.tackleTimer += dt / 1000;
+                if (p.tackleTimer >= 2) {
+                    ball.holder = p;
+                    p.tackleTimer = 0;
+                }
+                }
+            } else {
+                p.tackleTimer = 0;
+            }
+        }
+    }
+}
+
+function resolveCollisions() {
+    for (let i = 0; i < players.length; i++) {
+        for (let j = i + 1; j < players.length; j++) {
+            const a = players[i], b = players[j];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = a.r + b.r;
+            if (dist < minDist && dist > 0) {
+                const overlap = (minDist - dist) / 2;
+                const nx = dx / dist, ny = dy / dist;
+                a.x -= nx * overlap;
+                a.y -= ny * overlap;
+                b.x += nx * overlap;
+                b.y += ny * overlap;
+            }
+        }
+    }
+}
+
+function pickupCheck(){
+  for(const pl of players){
+    if(ball.holder) break;
+    if(Math.hypot(ball.x-pl.x, ball.y-pl.y) < pl.r + ball.r + 2){ ball.holder = pl; }
+  }
+}
+
+function goalCheck(){
+  const inY = ball.y > (H/2 - goalWidth/2) && ball.y < (H/2 + goalWidth/2);
+  if(!inY) return;
+  if(ball.x < poolPadding){ score.red++; resetKickoff('red'); }
+  if(ball.x > W - poolPadding){ score.blue++; resetKickoff('blue'); }
+}
+
+function setTeamKickoffPositions(team) {
+    const isBlue = team === 'blue';
+    const xLine = isBlue ? (W/2 - 40) : (W/2 + 40);
+    const slots = [0.15, 0.28, 0.41, 0.59, 0.72, 0.85];
+
+    const fields = isBlue ? blueFieldPlayers : redFieldPlayers;
+    for (let i = 0; i < fields.length; i++) {
+        const p = fields[i];
+        p.x = xLine + (isBlue ? -10 : 10);
+        p.y = H * slots[i];
+        p.vx = p.vy = 0;
+    }
+
+    const gk = players.find(p => p.isKeeper && p.team === team);
+    if (gk) {
+        gk.x = isBlue ? (poolPadding + goalDepth + 24) : (W - (poolPadding + goalDepth + 24));
+        gk.y = H / 2;
+        gk.vx = gk.vy = 0;
+    }
+}
+
+function resetKickoff(lastScoredTeam){
+    ball.x = W/2; ball.y = H/2; ball.vx = 0; ball.vy = 0; ball.holder = null;
+
+    setTeamKickoffPositions('blue');
+    setTeamKickoffPositions('red');
+
+    const concedingTeam = lastScoredTeam === 'blue' ? 'red' : 'blue';
+    const starters = concedingTeam === 'blue' ? blueFieldPlayers : redFieldPlayers;
+
+    const qb = starters[Math.floor(starters.length / 2)];
+    if (qb) {
+        qb.x = concedingTeam === 'blue' ? (W/2 - 10) : (W/2 + 10);
+        qb.y = H/2;
+        qb.vx = qb.vy = 0;
+
+        ball.holder = qb;
+        setTimeout(() => {
+          tryPass(qb);
+        }, 450);
+    }
+
+    blueFieldPlayers.forEach(p => p.ai = true);
+    if (currentControlledIndex >= 0 && blueFieldPlayers[currentControlledIndex]) {
+        blueFieldPlayers[currentControlledIndex].ai = false;
+    }
+    syncControlToHolder();
+    lastHolder = null;
+}
+
+function drawField(){
+  const left = poolPadding+goalDepth, right = W-(poolPadding+goalDepth), top = poolPadding, bottom = H-poolPadding;
+  ctx.strokeStyle = '#e0f4ff'; ctx.lineWidth=4; ctx.strokeRect(left, top, right-left, bottom-top);
+  ctx.setLineDash([10,10]); ctx.beginPath(); ctx.moveTo(W/2, top); ctx.lineTo(W/2, bottom); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(poolPadding, (H-goalWidth)/2, goalDepth, goalWidth);
+  ctx.fillRect(W-poolPadding-goalDepth, (H-goalWidth)/2, goalDepth, goalWidth);
+}
+
+function drawHUD(){
+  const player = getControlledBlue();
+  if(ball.holder===player){
+    const w = 180, h=10, x=W/2-w/2, y=H-24;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle = '#ffe073'; ctx.fillRect(x,y,w*mouse.power,h);
+    ctx.strokeStyle = '#fff'; ctx.strokeRect(x,y,w,h);
+  }
+}
+
+function step(dt){
+  const prev = ball.holder;
+  handleInput(); aiThink();
+  players.forEach(p=>p.step()); ball.step();
+  resolveCollisions(); tackleCheck(dt); pickupCheck();
+  if (ball.holder !== prev) {
+    syncControlToHolder();
+    lastHolder = ball.holder;
+  }
+  goalCheck();
+  if(running){ timeLeft -= dt/1000; if(timeLeft<=0) running=false; }
+  document.getElementById('score').textContent = `Blue ${score.blue} — ${score.red} Red`;
+  const m=Math.floor(timeLeft/60), s=String(Math.floor(timeLeft%60)).padStart(2,'0');
+  document.getElementById('clock').textContent = `${m}:${s}`;
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  drawField();
+  players.forEach(p=>p.draw());
+  ball.draw();
+  drawHUD();
+}
+
+function loop(now){
+  const dt = Math.min(32, now - last); last = now;
+  if(running) step(dt); else step(0);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// Input
+window.addEventListener('keydown', (e)=>{
+    keys.add(e.key);
+
+    if (e.key === ' '){ 
+        e.preventDefault();
+
+        const blueGoalie = players.find(p => p.isKeeper && p.team === 'blue');
+
+        if (ball.holder === blueGoalie) {
+            blueFieldPlayers.forEach(p => p.ai = true);
+            if (blueGoalie) blueGoalie.ai = false;
+            currentControlledIndex = -1;
+        } else {
+            currentControlledIndex = (currentControlledIndex + 1) % blueFieldPlayers.length;
+            blueFieldPlayers.forEach(p => p.ai = true);
+            blueFieldPlayers[currentControlledIndex].ai = false;
+
+            const gk = players.find(p => p.isKeeper && p.team === 'blue');
+            if (gk) gk.ai = true;
+        }
+        return;
+    }
+
+    if (e.key === 't' || e.key === 'T') tacklePressed = true;
+    if (e.key === 'p' || e.key === 'P') running = !running;
+    if (e.key === 'r' || e.key === 'R') spawnTeams();
+
+    if (e.key === 'e' || e.key === 'E') {
+        const you = getControlledBlue();
+        if (ball.holder === you) tryPass(you);
+    }
+});
+
+window.addEventListener('keyup', (e)=>{
+    keys.delete(e.key);
+    if (e.key === 't' || e.key === 'T') tacklePressed = false;
+});
+
+canvas.addEventListener('mousemove', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = (e.clientX - rect.left) * (canvas.width/rect.width);
+  mouse.y = (e.clientY - rect.top) * (canvas.height/rect.height);
+});
+canvas.addEventListener('mousedown', ()=>{ mouse.down = true; });
+window.addEventListener('mouseup', ()=>{
+  if(mouse.down && ball.holder===getControlledBlue()){
+    tryShoot(getControlledBlue(), mouse.x, mouse.y, mouse.power); mouse.power=0;
+  }
+  mouse.down = false;
+});
+
+document.getElementById('btnStart').onclick = ()=> running=!running;
+document.getElementById('btnReset').onclick = ()=> spawnTeams();
+
+spawnTeams(); requestAnimationFrame(loop);
