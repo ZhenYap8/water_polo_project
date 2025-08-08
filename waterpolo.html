@@ -23,7 +23,7 @@
       <span id="clock">03:00</span>
     </div>
     <canvas id="game" width="1000" height="600"></canvas>
-    <div id="legend">Controls: WASD / Arrow keys to swim, hold Left Mouse to aim & power shot, release to shoot. (Space) switch player, (E) quick pass, (P) pause, (R) reset.</div>
+    <div id="legend">Controls: WASD / Arrow keys to swim, hold Left Mouse to aim & power shot, release to shoot. (Space) switch player, (E) quick pass, (T) tackle, (P) pause, (R) reset.</div>
   </div>
 
   <script>
@@ -38,6 +38,7 @@
     const keys = new Set();
     const mouse = { x: W/2, y: H/2, down: false, power: 0 };
     let currentControlledIndex = 0;
+    let lastHolder = null;
 
     class Entity {
       constructor(x,y,r,color,team){
@@ -149,6 +150,7 @@
 
       ball.x=W/2; ball.y=H/2; ball.vx=0; ball.vy=0; ball.holder=null;
       currentControlledIndex=0;
+      syncControlToHolder();
     }
 
     function formDShape(team){
@@ -199,6 +201,24 @@
       tryShoot(holder, holder.x + dx, holder.y + dy, 0.55 + Math.min(0.45, dist/600));
     }
 
+    function syncControlToHolder(){
+      if (ball.holder && ball.holder.team === 'blue') {
+        const idx = blueFieldPlayers.indexOf(ball.holder);
+        if (idx !== -1) {
+            currentControlledIndex = idx;
+            blueFieldPlayers.forEach(p => p.ai = true);
+            blueFieldPlayers[idx].ai = false;
+        } else {
+            const blueGoalie = players.find(p => p.isKeeper && p.team === 'blue');
+            if (ball.holder === blueGoalie) {
+                currentControlledIndex = -1;
+                blueFieldPlayers.forEach(p => p.ai = true);
+                blueGoalie.ai = false;
+            }
+        }
+      }
+    }
+
     function aiThink(){
         const blueD = formDShape("blue"), redD = formDShape("red");
 
@@ -216,6 +236,8 @@
                 }
             }
         }
+
+        
     
 
         // --- PER-PLAYER MOVEMENT/DEFENCE ---
@@ -267,7 +289,7 @@
 
                 // Within tackle range and in front
                 if (dist < p.r + ball.holder.r + 4 && inFront) {
-                    if (p === players[0]) {
+                    if (p === getControlledBlue()) {
                     // Human player must press T
                     if (tacklePressed) {
                         p.tackleTimer += dt / 1000;
@@ -384,7 +406,9 @@
             // keep control with current player unless goalie currently holds ball, etc.
             blueFieldPlayers[currentControlledIndex].ai = false;
         }
-    }
+        syncControlToHolder();
+        lastHolder = null; // reset last holder to avoid confusion
+      }
 
     function drawField(){
       const left = poolPadding+goalDepth, right = W-(poolPadding+goalDepth), top = poolPadding, bottom = H-poolPadding;
@@ -406,9 +430,15 @@
     }
 
     function step(dt){
+        const prev = ball.holder;
       handleInput(); aiThink();
       players.forEach(p=>p.step());ball.step();
-      resolveCollisions();tackleCheck(dt);pickupCheck();goalCheck();
+      resolveCollisions();tackleCheck(dt);pickupCheck();
+      if (ball.holder !== prev) {
+        syncControlToHolder();
+        lastHolder = ball.holder;
+      }
+      goalCheck();
       if(running){ timeLeft -= dt/1000; if(timeLeft<=0) running=false; }
       document.getElementById('score').textContent = `Blue ${score.blue} — ${score.red} Red`;
       const m=Math.floor(timeLeft/60), s=String(Math.floor(timeLeft%60)).padStart(2,'0');
