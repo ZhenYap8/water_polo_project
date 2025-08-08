@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Water Polo – HTML5 Canvas</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="wrap">
+    <div id="ui">
+      <button id="btnStart" class="btn">▶ Start / Pause (P)</button>
+      <button id="btnReset" class="btn">↺ Reset (R)</button>
+      <span id="score">Blue 0 — 0 Red</span>
+      <span id="clock">03:00</span>
+    </div>
+    <canvas id="game" width="1000" height="600"></canvas>
+    <div id="legend">Controls: WASD / Arrow keys to swim, hold Left Mouse to aim & power shot, release to shoot. (Space) switch player, (E) quick pass, (T) tackle, (P) pause, (R) reset.</div>
+  </div>
+
+  <script src="game.js" defer></script>
+</body>
+</html>
