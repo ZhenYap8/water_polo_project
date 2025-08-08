@@ -61,7 +61,10 @@
       applyInput(ax, ay){
         this.vx += ax * this.accel; this.vy += ay * this.accel;
         const s = Math.hypot(this.vx,this.vy);
-        const m = this.maxSpeed * (this.isKeeper?1.2:1);
+        let mult = 1;
+        if (ball.holder === this) mult *= 1.00;     // tweak 1.05–1.15
+        if (this.isKeeper) mult *= 1.0;
+        const m = this.maxSpeed * mult;
         if(s>m){ this.vx = this.vx/s * m; this.vy = this.vy/s * m; }
       }
       draw(){
