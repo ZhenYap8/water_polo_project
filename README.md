@@ -8,6 +8,9 @@ A browser water polo game against a CPU team, updated on 6 September 2026.
 
 - Full-viewport 3D pool, swimmers, goals, animated water, and ball flight.
 - Overhead, broadcast, end-line, and first-person cameras.
+- Desktop first-person mouse-look with mouse capture and crosshair aiming.
+- Forgiving CPU with slower pursuit, less precise shots, and a delay before stealing.
+- Steals only succeed within the ball carrier’s forward 90-degree cone; side and rear tackles fail.
 - Mobile joystick and overlaid action buttons, plus keyboard controls.
 - Seven players per team, four quick 90-second quarters, 28-second possession, and 18-second attacking rebounds.
 - Goal-area checks, goalkeeper saves, and possession restarts. Contact, match timing, and other rules are simplified; this is not a full regulation simulator.
@@ -39,7 +42,9 @@ npx tsc --noEmit
 | Shoot | Hold and release Space | Hold and release Shoot |
 | Steal | F | Steal |
 | Pause | P or Escape | Pause |
-| Aim | Mouse position; drag to look in first-person | Slide on Shoot; drag the pool to look in first-person |
+| Aim | Mouse position; move mouse to look in first-person | Slide on Shoot; drag the pool to look in first-person |
+
+On a computer, choose **First person** in the camera menu, start the match, and move the mouse to look around. Click the pool to capture the mouse for continuous turning without holding a button or hitting the screen edge. Press **Escape** to pause and release the mouse; resume and click the pool to capture it again. If mouse capture is unavailable, moving the mouse over the pool still turns the view. WASD/arrow keys swim, E passes, and holding/releasing Space shoots toward the crosshair. Touch devices retain the joystick, action buttons, and drag-to-look controls.
 
 Choose the view in the camera menu. First-person follows the selected swimmer, and movement follows the direction the camera faces.
 
