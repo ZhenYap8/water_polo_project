@@ -1,0 +1,75 @@
+:root { --pad: 12px; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background:#0b1520;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* 3-row grid: UI on top, canvas in middle, legend at bottom */
+#wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;                 /* whole device viewport, safe on iOS 16+ */
+  padding: 12px;
+  padding-top: calc(env(safe-area-inset-top, 0) + 12px);
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+#wrap > * { min-height: 0; }
+
+
+/* Top controls bar — participates in flow (not overlay) */
+#ui {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  /* If you REALLY want it sticky, add position:sticky and top:...,
+     but it already reserves space with the grid, so not required. */
+}
+
+.btn {
+  background:#1f334a;
+  border:1px solid #2a4668;
+  color:#e7f1ff;
+  padding:8px 12px;
+  border-radius:10px;
+  cursor:pointer;
+}
+.btn:hover { filter:brightness(1.1); }
+
+/* Middle area that the canvas will fill */
+#stage {
+  position: relative;
+  min-height: 0;               /* important so the 1fr row can shrink */
+  /* optional: center a fixed aspect if you want letterboxing
+     remove these two lines if you're doing the JS resize approach */
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* Canvas fills its grid row */
+#stage > canvas#game {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: linear-gradient(180deg, #2d8db9 0%, #1d6f96 100%);
+  border:6px solid #e0f4ff;
+  border-radius:18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+/* Bottom legend */
+#legend {
+  font-size:14px;
+  line-height:1.4;
+  opacity:.9;
+  color:white;
+  text-align:center;
+}
