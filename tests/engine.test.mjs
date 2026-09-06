@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createGame,step,release,switchPlayer,tackle} from '../app/engine.mjs';
+const run=(g,seconds,input={})=>{for(let i=0;i<seconds*120;i++)step(g,1/120,input)};
+test('starts with two teams, possession, and a stopped clock',()=>{const g=createGame();run(g,1);assert.equal(g.players.length,10);assert.equal(g.time,180);assert.equal(g.ball.owner,1)});
+test('movement, switching and pause',()=>{const g=createGame();g.phase='playing';const x=g.players[1].x;run(g,.3,{x:1});assert.ok(g.players[1].x>x);switchPlayer(g);assert.notEqual(g.selected,1);g.phase='paused';const time=g.time;run(g,2);assert.equal(g.time,time)});
+test('passing reaches teammate and transfers selection',()=>{const g=createGame();g.phase='playing';g.aim={...g.players[2]};release(g,'pass');assert.equal(g.ball.owner,null);run(g,1);assert.equal(g.ball.owner,2);assert.equal(g.selected,2)});
+test('shot scores, then restarts with opponent',()=>{const g=createGame();g.phase='playing';g.players[1].x=1000;g.players[1].y=230;g.players[5].y=395;g.aim={x:1200,y:230};release(g,'shot',1);run(g,.2);assert.equal(g.score[0],1);run(g,2.1);assert.equal(g.ball.last,1);assert.equal(g.score[0],1)});
+test('keeper intercepts shot',()=>{const g=createGame();g.phase='playing';g.players[1].x=950;g.players[1].y=310;g.aim={x:1200,y:310};release(g,'shot',1);run(g,.13);assert.equal(g.ball.owner,5);assert.equal(g.score[0],0)});
+test('close tackle wins possession and shot clock turnover works',()=>{const g=createGame();g.phase='playing';g.ball.owner=6;g.ball.last=1;Object.assign(g.players[6],{x:440,y:310});tackle(g);assert.equal(g.ball.owner,1);g.shotClock=.01;run(g,.03);assert.equal(g.ball.last,1)});
+test('CPU attacks and complete match terminates without invalid positions',()=>{const g=createGame();g.phase='playing';run(g,181);assert.equal(g.phase,'ended');assert.equal(g.time,0);assert.ok(g.score[1]>0);assert.ok(g.players.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))});
