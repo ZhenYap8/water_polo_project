@@ -39,6 +39,18 @@ test('mouse moves the view without holding a button, then capture uses unbounded
 test('touch gestures never request desktop mouse capture', () => {
   const f=setup();f.click('touch');f.click('pen');assert.equal(f.requests,0);f.input.dispose();
 });
+test('start and resume gestures capture without an extra canvas click', () => {
+  const f=setup();f.setActive(false);f.input.capture();assert.equal(f.requests,0);
+  f.setActive(true);f.input.capture();assert.equal(f.state.locked,true);
+  f.input.capture();assert.equal(f.requests,1);
+  f.doc.exitPointerLock();f.setActive(true);f.input.capture();
+  assert.equal(f.state.locked,true);assert.equal(f.requests,2);f.input.dispose();
+});
+test('a denied automatic request can be retried with a fresh user gesture', async () => {
+  const f=setup('reject');f.input.capture();await Promise.resolve();
+  f.canvas.requestPointerLock=()=>{f.doc.pointerLockElement=f.canvas;f.emit(f.doc,'pointerlockchange');};
+  f.click('mouse');assert.equal(f.state.locked,true);assert.equal(f.state.unavailable,false);f.input.dispose();
+});
 test('Escape unlock pauses once and mouse movement stops until resumed', () => {
   const f=setup();f.click('mouse');f.doc.exitPointerLock();f.move(30,20);
   assert.equal(f.unlocks,1);assert.deepEqual(f.looks,[]);

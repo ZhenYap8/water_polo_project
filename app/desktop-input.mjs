@@ -11,8 +11,8 @@ export function createDesktopLook(canvas, {enabled, look, onState, onUnlock}) {
     report();
   };
   const failed = () => { pending = false; unavailable = true; report(); };
-  const request = (event) => {
-    if (event.pointerType !== 'mouse' || event.button !== 0 || !enabled() || locked || pending || unavailable) return;
+  const capture = () => {
+    if (disposed || !enabled() || locked || pending || typeof canvas.requestPointerLock !== 'function') return;
     pending = true;
     try {
       // Older browsers return void; newer ones can reject a Promise.
@@ -20,10 +20,14 @@ export function createDesktopLook(canvas, {enabled, look, onState, onUnlock}) {
       result?.catch(() => { if (!disposed) failed(); });
     } catch { failed(); }
   };
+  const request = (event) => {
+    if (event.pointerType === 'mouse' && event.button === 0) capture();
+  };
   const changed = () => {
     const wasLocked = locked;
     locked = doc.pointerLockElement === canvas;
     pending = false;
+    if (locked) unavailable = false;
     previous = null;
     if (locked && !enabled()) { release(); return; }
     report();
@@ -47,6 +51,7 @@ export function createDesktopLook(canvas, {enabled, look, onState, onUnlock}) {
   doc.addEventListener('pointerlockerror', failed);
   report();
   return {
+    capture,
     sync() { if (!enabled() && (locked || previous)) release(); },
     dispose() {
       disposed = true;
