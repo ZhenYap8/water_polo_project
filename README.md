@@ -8,6 +8,7 @@ A browser water polo game against a CPU team, updated on 6 September 2026.
 
 - Surrounding stadium with tiered stands, spectators, team-coloured seats, and floodlights; tactical cameras cut away nearby stands to keep the pool visible.
 - Full-viewport 3D pool with local swimmer wakes, buoyant ball movement, and water drag.
+- Human-proportioned swimmers with facial features, water-polo caps, jointed elbows and knees, crawl strokes, and eggbeater kicks.
 - Upright goalkeepers tread water, raise their hands, and lunge sideways or upward with visible recovery.
 - Shot-power feedback and touch controls inspired by mobile sports games.
 - Overhead, broadcast, end-line, and first-person cameras.
