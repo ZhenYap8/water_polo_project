@@ -1,0 +1,64 @@
+import * as THREE from 'three';
+import {fitCamera} from './camera.mjs';
+import {W,H,GOAL_MIN,GOAL_MAX} from './engine.mjs';
+export type CameraMode='overhead'|'broadcast'|'endline';
+const world=(x:number,y:number)=>new THREE.Vector3((x/W-.5)*25,0,(y/H-.5)*20);
+export function createPoolScene(canvas:HTMLCanvasElement){
+ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));renderer.setClearColor('#081d2a');renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
+ const scene=new THREE.Scene();scene.background=new THREE.Color('#102b3c');scene.fog=new THREE.Fog('#102b3c',65,115);
+ const camera=new THREE.PerspectiveCamera(43,1,.1,160);camera.position.set(0,34,22);camera.lookAt(0,0,0);
+ scene.add(new THREE.HemisphereLight('#d6f6ff','#37626d',2.3));const sun=new THREE.DirectionalLight('#fff1db',3);sun.position.set(-10,25,8);scene.add(sun);
+ const materials:THREE.Material[]=[],geometries:THREE.BufferGeometry[]=[],textures:THREE.Texture[]=[];
+ function material(color:string,roughness=.6){const m=new THREE.MeshStandardMaterial({color,roughness});materials.push(m);return m;}
+ const deck=material('#c7d8d9'),wall=material('#6496a6'),floor=material('#a2dce4'),white=material('#f4f9ec'),blue=material('#167ad0'),red=material('#f04446'),skin=[material('#bd8056'),material('#edbe91'),material('#88533d')],dark=material('#123945');
+ function mesh(geometry:THREE.BufferGeometry,mat:THREE.Material,parent:THREE.Object3D=scene){geometries.push(geometry);const o=new THREE.Mesh(geometry,mat);parent.add(o);return o;}
+ function box(x:number,y:number,z:number,w:number,h:number,d:number,mat:THREE.Material,parent:THREE.Object3D=scene){const m=mesh(new THREE.BoxGeometry(w,h,d),mat,parent);m.position.set(x,y,z);return m;}
+ box(0,-1.75,0,25,0.2,20,floor);box(0,-1,10.18,25.8,1.7,.36,wall);box(0,-1,-10.18,25.8,1.7,.36,wall);box(-12.7,-1,0,.4,1.7,20,wall);box(12.7,-1,0,.4,1.7,20,wall);
+ box(0,-.23,11.5,31,.5,2.8,deck);box(0,-.23,-11.5,31,.5,2.8,deck);box(-14,-.23,0,2.6,.5,20.2,deck);box(14,-.23,0,2.6,.5,20.2,deck);
+ // Pool tiles and floor markings remain visible through the water.
+ const tilePoints:number[]=[];for(let x=-12;x<=12;x++){tilePoints.push(x,-1.63,-10,x,-1.63,10);}for(let z=-10;z<=10;z++){tilePoints.push(-12.5,-1.63,z,12.5,-1.63,z);}const tileGeo=new THREE.BufferGeometry();tileGeo.setAttribute('position',new THREE.Float32BufferAttribute(tilePoints,3));geometries.push(tileGeo);const tileMat=new THREE.LineBasicMaterial({color:'#468d9f',transparent:true,opacity:.32});materials.push(tileMat);scene.add(new THREE.LineSegments(tileGeo,tileMat));
+ for(const x of [-10.5,-6.5,0,6.5,10.5])box(x,-1.6,0,.055,.025,20,x===0?white:dark);
+ const penaltyMark=material('#f7d450');for(const x of [-7.5,7.5])for(const z of [-10.4,10.4])box(x,.06,z,.13,.05,.4,penaltyMark);
+ const waterGeometry=new THREE.PlaneGeometry(25,20,60,45);waterGeometry.rotateX(-Math.PI/2);
+ const waterMaterial=new THREE.MeshPhongMaterial({color:'#159eae',transparent:true,opacity:.67,shininess:95,specular:'#b4f8ff',side:THREE.DoubleSide,depthWrite:false});materials.push(waterMaterial);const water=mesh(waterGeometry,waterMaterial);water.renderOrder=1;
+ const wp=waterGeometry.attributes.position as THREE.BufferAttribute;const base=Float32Array.from(wp.array as ArrayLike<number>);
+ // Boundary floats make distances and each end of the pool easy to read.
+ for(const z of [-9.88,9.88])for(let i=0;i<70;i++){const x=-12.35+i*24.7/69,mat=Math.abs(x)>10.5?red:Math.abs(x)>6.5?white:blue;const float=mesh(new THREE.SphereGeometry(.1,6,4),mat);float.scale.x=1.5;float.position.set(x,.05,z);}
+ function tube(a:THREE.Vector3,b:THREE.Vector3,r:number,mat:THREE.Material,parent:THREE.Object3D=scene){const delta=b.clone().sub(a),m=mesh(new THREE.CylinderGeometry(r,r,delta.length(),8),mat,parent);m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());return m;}
+ const netMat=new THREE.LineBasicMaterial({color:'#f4fbf8',transparent:true,opacity:.55});materials.push(netMat);
+ for(const end of [-1,1]){const x=end*12.5,bx=end*13.35;for(const z of [-1.5,1.5]){tube(new THREE.Vector3(x,.04,z),new THREE.Vector3(x,.95,z),.075,white);tube(new THREE.Vector3(x,.95,z),new THREE.Vector3(bx,.18,z),.045,white);}tube(new THREE.Vector3(x,.95,-1.5),new THREE.Vector3(x,.95,1.5),.075,white);
+ const pts:number[]=[];for(let z=-1.5;z<=1.501;z+=.15){pts.push(x,.95,z,bx,.18,z,bx,.18,z,bx,.02,z);}for(let i=0;i<=6;i++){const t=i/6;pts.push(x+(bx-x)*t,.95-.77*t,-1.5,x+(bx-x)*t,.95-.77*t,1.5);}const geo=new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(pts,3));geometries.push(geo);scene.add(new THREE.LineSegments(geo,netMat));}
+ function textSprite(text:string,color:string){const c=document.createElement('canvas');c.width=128;c.height=64;const ctx=c.getContext('2d')!;ctx.font='bold 42px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#082532bb';ctx.fillRect(27,5,74,54);ctx.fillStyle=color;ctx.fillText(text,64,33);const texture=new THREE.CanvasTexture(c);textures.push(texture);const mat=new THREE.SpriteMaterial({map:texture,depthTest:false});materials.push(mat);const sprite=new THREE.Sprite(mat);sprite.scale.set(.95,.48,1);sprite.renderOrder=4;return sprite;}
+ const swimmers:any[]=[];
+ for(let team=0;team<2;team++)for(let i=0;i<7;i++){const root=new THREE.Group(),body=new THREE.Group();root.add(body);scene.add(root);const s=skin[(i+team)%skin.length],capMat=i===0?red:team===0?white:blue;
+ const torso=mesh(new THREE.CapsuleGeometry(.20,.43,4,8),s,body);torso.position.set(0,.08,.18);torso.rotation.x=Math.PI/2;torso.scale.x=1.15;
+ const head=mesh(new THREE.SphereGeometry(.17,12,8),s,body);head.position.set(0,.23,-.24);
+ const cap=mesh(new THREE.SphereGeometry(.178,12,8,0,Math.PI*2,0,Math.PI*.61),capMat,body);cap.position.copy(head.position);cap.rotation.x=-.25;
+ for(const side of [-1,1]){const ear=mesh(new THREE.SphereGeometry(.052,8,6),white,body);ear.position.set(side*.17,.23,-.23);}
+ box(0,.055,.48,.34,.22,.22,team===0?blue:red,body);
+ const arms:THREE.Group[]=[];for(const side of [-1,1]){const arm=new THREE.Group();arm.position.set(side*.19,.1,-.04);const upper=mesh(new THREE.CapsuleGeometry(.066,.27,3,7),s,arm);upper.rotation.z=-side*.75;upper.position.set(side*.13,0,.06);const forearm=mesh(new THREE.CapsuleGeometry(.052,.25,3,7),s,arm);forearm.rotation.x=Math.PI/2;forearm.position.set(side*.25,-.02,.24);body.add(arm);arms.push(arm);const leg=mesh(new THREE.CapsuleGeometry(.065,.35,3,7),s,body);leg.rotation.x=Math.PI/2;leg.position.set(side*.11,-.08,.78);}
+ const rippleMat=new THREE.MeshBasicMaterial({color:team===0?'#bcefff':'#ffb8ac',transparent:true,opacity:.3,side:THREE.DoubleSide,depthWrite:false});materials.push(rippleMat);const ripple=mesh(new THREE.RingGeometry(.45,.47,28),rippleMat);ripple.rotation.x=-Math.PI/2;ripple.renderOrder=2;
+ const label=textSprite(String(i+1),team===0?'#f1ffff':'#ffc4b9');scene.add(label);swimmers.push({root,body,arms,ripple,label});}
+ const ringMat=new THREE.MeshBasicMaterial({color:'#e1ff7e',side:THREE.DoubleSide,transparent:true,opacity:.95,depthWrite:false});materials.push(ringMat);const ring=mesh(new THREE.RingGeometry(.59,.67,40),ringMat);ring.rotation.x=-Math.PI/2;ring.renderOrder=3;
+ const ball=mesh(new THREE.SphereGeometry(.135,14,10),material('#ffdc42',.35));const seamMat=material('#986528');for(const angle of [0,Math.PI/2]){const seam=mesh(new THREE.TorusGeometry(.136,.007,4,20),seamMat,ball);seam.rotation.y=angle;}
+ const shadowMat=new THREE.MeshBasicMaterial({color:'#032e3a',transparent:true,opacity:.3,depthWrite:false});materials.push(shadowMat);const shadow=mesh(new THREE.CircleGeometry(.19,20),shadowMat);shadow.rotation.x=-Math.PI/2;shadow.renderOrder=2;
+ const aimMat=new THREE.LineDashedMaterial({color:'#e4ff83',dashSize:.22,gapSize:.13,transparent:true,opacity:.9,depthTest:false});materials.push(aimMat);const aimGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(1,0,0)]);geometries.push(aimGeo);const aimLine=new THREE.Line(aimGeo,aimMat);aimLine.renderOrder=4;scene.add(aimLine);
+ const raycaster=new THREE.Raycaster(),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),intersection=new THREE.Vector3();let mode:CameraMode='overhead',aspect=1,lastT=-1;
+ function resize(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;aspect=r.width/r.height;renderer.setSize(r.width,r.height,false);fitCamera(camera,mode,aspect);}
+ const observer=new ResizeObserver(resize);observer.observe(canvas);resize();
+ function update(g:any){
+ const now=g.elapsed,selected=g.players[g.selected];
+ // All cameras see the entire pitch. The low end-line view looks towards Blue's attack.
+ camera.updateMatrixWorld();
+ if(now!==lastT){for(let i=0;i<wp.count;i++){const x=base[i*3],z=base[i*3+2];wp.setY(i,Math.sin(x*2.7+now*1.7)*.026+Math.cos(z*3.1-now*1.5)*.023);}wp.needsUpdate=true;waterGeometry.computeVertexNormals();lastT=now;}
+ for(let i=0;i<g.players.length;i++){const p=g.players[i],sw=swimmers[i];if(!sw)continue;const location=world(p.x,p.y);sw.root.position.copy(location);sw.root.position.y=.035*Math.sin(now*3+p.id);let angle=p.team===0?-Math.PI/2:Math.PI/2;const moving=Math.hypot(p.vx,p.vy)>8;if(moving)angle=Math.atan2(-p.vx*25/W,-p.vy*20/H);sw.body.rotation.y=angle;const hold=g.ball.owner===p.id;sw.arms.forEach((arm:THREE.Group,k:number)=>{arm.rotation.x=hold&&k===1?-1.7:Math.sin(now*(moving?8:2)+k*Math.PI+p.id)*.65;arm.rotation.z=hold&&k===1?-.3:0;});sw.ripple.position.copy(location);sw.ripple.position.y=.06;const scale=1+.18*Math.sin(now*4+i);sw.ripple.scale.set(scale,moving?scale*1.3:scale,1);sw.label.position.copy(location).add(new THREE.Vector3(0,.85,0));sw.label.visible=mode==='overhead'||p.id===g.selected||hold;}
+ ring.position.copy(world(selected.x,selected.y));ring.position.y=.1;ring.scale.setScalar(1+g.charge*.2);
+ const bp=world(g.ball.x,g.ball.y);ball.position.copy(bp);ball.position.y=g.ball.owner!==null?.25+(g.charge*.65):(g.ball.height||.13);ball.rotation.x=now*3;ball.rotation.z=now*4;shadow.position.copy(bp);shadow.position.y=.06;shadow.scale.setScalar(1+ball.position.y*.2);
+ aimLine.visible=g.ball.owner===g.selected;if(aimLine.visible){const target=g.aim||{x:W+20,y:Math.max(GOAL_MIN+10,Math.min(GOAL_MAX-10,selected.y))};const a=world(selected.x,selected.y);a.y=.3;const b=world(target.x,target.y);b.y=.3;const direction=b.clone().sub(a).normalize();const end=a.clone().addScaledVector(direction,3);const arr=aimGeo.attributes.position as THREE.BufferAttribute;arr.setXYZ(0,a.x,a.y,a.z);arr.setXYZ(1,end.x,end.y,end.z);arr.needsUpdate=true;aimLine.computeLineDistances();}
+ renderer.render(scene,camera);
+ }
+ function point(clientX:number,clientY:number){const rect=canvas.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);if(!raycaster.ray.intersectPlane(plane,intersection))return null;return {x:(intersection.x/25+.5)*W,y:(intersection.z/20+.5)*H};}
+ function movement(x:number,y:number){const right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);right.y=0;right.normalize();const up=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);up.y=0;up.normalize();const v=right.multiplyScalar(x).addScaledVector(up,-y);return {x:v.x,y:v.z*(H/20)/(W/25)};}
+ return {update,point,movement,setCamera:(next:CameraMode)=>{mode=next;fitCamera(camera,mode,aspect);},dispose:()=>{observer.disconnect();geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());renderer.dispose();}};
+}
