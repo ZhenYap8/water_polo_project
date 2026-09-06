@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createStadium} from './stadium';
 import {waterHeight} from './water.mjs';
 import {fitCamera,swimmerView,swimmerAim,swimInput} from './camera.mjs';
 import {W,H,GOAL_MIN,GOAL_MAX} from './engine.mjs';
@@ -8,6 +9,7 @@ export function createPoolScene(canvas:HTMLCanvasElement){
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));renderer.setClearColor('#081d2a');renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
  const scene=new THREE.Scene();scene.background=new THREE.Color('#102b3c');scene.fog=new THREE.Fog('#102b3c',65,115);
+ const stadium=createStadium(scene);
  const camera=new THREE.PerspectiveCamera(43,1,.1,160);camera.position.set(0,34,22);camera.lookAt(0,0,0);
  scene.add(new THREE.HemisphereLight('#d6f6ff','#37626d',2.3));const sun=new THREE.DirectionalLight('#fff1db',3);sun.position.set(-10,25,8);scene.add(sun);
  const materials:THREE.Material[]=[],geometries:THREE.BufferGeometry[]=[],textures:THREE.Texture[]=[];
@@ -57,9 +59,10 @@ export function createPoolScene(canvas:HTMLCanvasElement){
  ring.visible=mode!=='firstperson';ring.position.copy(world(selected.x,selected.y));ring.position.y=.1;ring.scale.setScalar(1+g.charge*.2);
  const bp=world(g.ball.x,g.ball.y);ball.position.copy(bp);ball.position.y=g.ball.owner!==null?waterHeight(bp.x,bp.z,now)+.25+(g.charge*.65):(g.ball.height??.09);if(mode==='firstperson'&&g.ball.owner===g.selected){const forward=camera.getWorldDirection(new THREE.Vector3()),right=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);ball.position.copy(camera.position).addScaledVector(forward,.52).addScaledVector(right,.18);ball.position.y-=.23;}ball.rotation.x=now*3;ball.rotation.z=now*4;shadow.position.copy(bp);shadow.position.y=.06;shadow.scale.setScalar(1+ball.position.y*.2);
  aimLine.visible=mode!=='firstperson'&&g.ball.owner===g.selected;if(aimLine.visible){const target=g.aim||{x:W+20,y:Math.max(GOAL_MIN+10,Math.min(GOAL_MAX-10,selected.y))};const a=world(selected.x,selected.y);a.y=.3;const b=world(target.x,target.y);b.y=.3;const direction=b.clone().sub(a).normalize();const end=a.clone().addScaledVector(direction,3);const arr=aimGeo.attributes.position as THREE.BufferAttribute;arr.setXYZ(0,a.x,a.y,a.z);arr.setXYZ(1,end.x,end.y,end.z);arr.needsUpdate=true;aimLine.computeLineDistances();}
+ stadium.update(camera,mode==='firstperson');
  renderer.render(scene,camera);
  }
  function point(clientX:number,clientY:number){const rect=canvas.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);if(!raycaster.ray.intersectPlane(plane,intersection))return null;return {x:(intersection.x/25+.5)*W,y:(intersection.z/20+.5)*H};}
  function movement(x:number,y:number){return swimInput(camera,x,y);}
- return {update,point,movement,facing:()=>{if(mode!=='firstperson')return null;const x=Math.sin(yaw)*W/25,y=Math.cos(yaw)*H/20,n=Math.hypot(x,y);return {x:x/n,y:y/n};},firstPersonAim:()=>mode==='firstperson'?swimmerAim(tracked.x,tracked.z,yaw,pitch):null,look:(dx:number,dy:number)=>{if(mode==='firstperson'){yaw-=dx*.006;pitch=THREE.MathUtils.clamp(pitch-dy*.0035,-.48,.3);}},setCamera:(next:CameraMode)=>{mode=next;camera.fov=mode==='firstperson'?72:43;camera.aspect=aspect;camera.updateProjectionMatrix();if(mode==='firstperson'){yaw=Math.PI/2;pitch=-.035;}else fitCamera(camera,mode,aspect);},dispose:()=>{observer.disconnect();geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());renderer.dispose();}};
+ return {update,point,movement,facing:()=>{if(mode!=='firstperson')return null;const x=Math.sin(yaw)*W/25,y=Math.cos(yaw)*H/20,n=Math.hypot(x,y);return {x:x/n,y:y/n};},firstPersonAim:()=>mode==='firstperson'?swimmerAim(tracked.x,tracked.z,yaw,pitch):null,look:(dx:number,dy:number)=>{if(mode==='firstperson'){yaw-=dx*.006;pitch=THREE.MathUtils.clamp(pitch-dy*.0035,-.48,.3);}},setCamera:(next:CameraMode)=>{mode=next;camera.fov=mode==='firstperson'?72:43;camera.aspect=aspect;camera.updateProjectionMatrix();if(mode==='firstperson'){yaw=Math.PI/2;pitch=-.035;}else fitCamera(camera,mode,aspect);},dispose:()=>{stadium.dispose();observer.disconnect();geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());renderer.dispose();}};
 }
