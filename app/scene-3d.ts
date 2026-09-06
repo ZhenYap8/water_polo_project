@@ -45,7 +45,7 @@ export function createPoolScene(canvas:HTMLCanvasElement){
  const shadowMat=new THREE.MeshBasicMaterial({color:'#032e3a',transparent:true,opacity:.3,depthWrite:false});materials.push(shadowMat);const shadow=mesh(new THREE.CircleGeometry(.19,20),shadowMat);shadow.rotation.x=-Math.PI/2;shadow.renderOrder=2;
  const aimMat=new THREE.LineDashedMaterial({color:'#e4ff83',dashSize:.22,gapSize:.13,transparent:true,opacity:.9,depthTest:false});materials.push(aimMat);const aimGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(1,0,0)]);geometries.push(aimGeo);const aimLine=new THREE.Line(aimGeo,aimMat);aimLine.renderOrder=4;scene.add(aimLine);
  const raycaster=new THREE.Raycaster(),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),intersection=new THREE.Vector3();let mode:CameraMode='overhead',aspect=1,lastT=-1;
- function resize(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;aspect=r.width/r.height;renderer.setSize(r.width,r.height,false);fitCamera(camera,mode,aspect);}
+ function resize(){const r=canvas.getBoundingClientRect();if(r.width<1||r.height<1)return;aspect=r.width/r.height;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6,Math.sqrt(2400000/(r.width*r.height))));renderer.setSize(r.width,r.height,false);fitCamera(camera,mode,aspect);}
  const observer=new ResizeObserver(resize);observer.observe(canvas);resize();
  function update(g:any){
  const now=g.elapsed,selected=g.players[g.selected];
